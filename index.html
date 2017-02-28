@@ -1,0 +1,258 @@
+﻿<!DOCTYPE html>
+<html>
+<head lang="en">
+    <meta charset="UTF-8">
+    <title>象棋</title>
+    <style type="text/css">
+        body{margin: 0;padding: 0;}
+        #div1{width:620px;height:620px;margin: 0 auto;margin-top: 10px;}
+		#button1{width:200px;height:80px;margin-top: 10px; margin-left: -100px; position:relative;top:50%;left:50%;}
+		#h3{color:red;margin-top: 10px; margin-left: -50px; position:relative;top:50%;left:50%;}
+    </style>
+	<script src="https://cdn.socket.io/socket.io-1.2.0.js"></script>
+</head>
+<body>
+<button id="button1" onclick='my_find()'>FIND</button>
+<div id="div1"><canvas id="canvas1"></canvas></div>
+<h1 id="h3">換你囉<h1>
+
+<script>
+	var socket = io();
+	var black = [0,'包','車','馬','象','士','將','卒'];
+	var red = [0,'炮','俥','傌','相','仕','帥','兵'];
+	var canvas=document.getElementById("canvas1");
+	var hb=canvas.getContext("2d");
+	var mousePos = -1;
+	var val=0;
+	var moving = 0;
+	var id=0;
+	var o_x,o_y;
+	canvas.width=620;canvas.height=620;
+	var map=[] ;
+	var inter;
+	var sign=0;
+	var turn=1;
+	var cap=0;
+	var over=0;
+	var cas=0;
+	document.getElementById("h3").style.visibility="hidden";
+	function getMousePos(canvas, evt) {
+			var rect = canvas.getBoundingClientRect();
+			return {
+			  x: evt.clientX - rect.left,
+			  y: evt.clientY - rect.top
+			};
+	}
+	function draw(){
+			hb.fillStyle='#FF9900';
+			hb.clearRect(0, 0, canvas.width, canvas.height);
+			hb.rect(0, 0, canvas.width, canvas.height);
+			hb.fill();
+			
+			for(var i=0;i<10;i++){
+				for(var j=0;j<9;j++){
+					if(map[i][j]!=0){
+							var x = 30+j*70;
+							var y = 30+i*60;
+							if(i>4) y+=20;
+							if(sign!=0&&sign[0]==i&&sign[1]==j) hb.strokeStyle='red';
+							else hb.strokeStyle='black';
+							hb.lineWidth=8;
+							hb.beginPath();
+							hb.arc(x, y, 25, 0, 2 * Math.PI);
+							hb.stroke();
+							hb.fillStyle="#cc5200";
+							hb.fill();
+							hb.font = 'bold 40px arial';
+							if(map[i][j]>10){
+								hb.fillStyle = '#990000';
+								hb.fillText(red[map[i][j]-10],x-20,y+10);
+							}
+							else{
+								hb.fillStyle = 'black';
+								hb.fillText(black[map[i][j]],x-20,y+10);
+							}
+							
+						}
+				}
+					
+			}
+			
+			if(val>0&&mousePos != -1){
+				hb.lineWidth=8;
+				hb.beginPath();
+				hb.arc(mousePos.x, mousePos.y, 25, 0, 2 * Math.PI);
+				hb.stroke();
+				hb.fillStyle="#cc5200";
+				hb.fill();
+				hb.font = 'bold 40px arial';
+				if(val>10){
+					hb.fillStyle = '#990000';
+					hb.fillText(red[val-10],mousePos.x-20, mousePos.y+10);
+				}
+				else{
+					hb.fillStyle = 'black';
+					hb.fillText(black[val],mousePos.x-20, mousePos.y+10);
+				}
+			}
+			
+			
+			hb.lineWidth=5;
+            hb.strokeStyle="#000";
+            hb.strokeRect(30,30,560,560); 
+            hb.lineWidth=1;
+
+            for(var i=1;i<9;i++) {
+                if (i > 4) {
+                    hb.moveTo(30, i * 60 + 50);
+                    hb.lineTo(590, i * 60 + 50);
+                }
+                else {
+                    hb.moveTo(30, i * 60+30);
+                    hb.lineTo(590, i * 60+30);
+                }
+            }  
+
+            for(var i=1;i<8;i++){
+                hb.moveTo(i*70+30,30);hb.lineTo(i*70+30,270);hb.moveTo(i*70+30,350);hb.lineTo(i*70+30,590);
+            }  
+
+            hb.moveTo(240,30);hb.lineTo(380,150);hb.moveTo(380,30);hb.lineTo(240,150);
+            hb.moveTo(240,590);hb.lineTo(380,470);hb.moveTo(380,590);hb.lineTo(240,470);
+            hb.stroke();  
+			
+			hb.fillStyle = 'black';
+            hb.font = 'bold 60px arial';
+            hb.fillText("楚河",80,330);
+			hb.fillText("漢界",420,330);
+			if(over){
+				hb.fillStyle = 'red';
+				hb.fillText("OVER",220,330);
+			}
+			else if(cap){
+				hb.fillStyle = 'red';
+				hb.fillText("將軍",250,330);
+			}
+	}
+	canvas.addEventListener('mousemove', function(evt) {
+		mousePos = getMousePos(canvas, evt);
+	}, false);
+	
+	canvas.addEventListener('click', function(evt) {
+		if(turn==0) return;
+		mousePos = getMousePos(canvas, evt);
+		
+		mousePos.x = Math.ceil((mousePos.x-50)/70);
+		
+		
+		if(mousePos.y>330) mousePos.y-=20;
+		mousePos.y = Math.ceil((mousePos.y-50)/60);
+		
+		if(moving){
+			if(o_x!=mousePos.x||o_y!=mousePos.y){
+				if(id==2){
+					mousePos.y = 9-mousePos.y;
+					mousePos.x = 8-mousePos.x;
+					o_y=9-o_y;
+					o_x=8-o_x;
+				}
+				socket.emit('moving',{
+					val:val,x:mousePos.x,y:mousePos.y,o_x:o_x,o_y:o_y
+				});
+			}
+			else map[o_y][o_x]=val;
+			val=0;
+			moving = 1- moving;
+			
+		}
+			
+		else {
+			if( (map[mousePos.y][mousePos.x]>10&&id==1) || (map[mousePos.y][mousePos.x]>0&&map[mousePos.y][mousePos.x]<10&&id==2)){
+				val = map[mousePos.y][mousePos.x];
+				map[mousePos.y][mousePos.x]=0;
+				o_x=mousePos.x;
+				o_y=mousePos.y;
+				moving = 1- moving;
+			}
+			else val=0;
+		}
+		
+
+	}, false);
+	
+	function my_find(){
+		if(cas==0){
+			document.getElementById("button1").style.visibility="hidden";
+			document.getElementById("button1").innerHTML="LEAVE";
+			socket.emit('find',1);
+			cas=1;
+		}
+		else{
+			document.getElementById("button1").innerHTML="FIND";
+			hb.clearRect(0, 0, canvas.width, canvas.height);
+			socket.emit('leave',1);
+			sign=cas=over=id=val=moving=0;
+			turn=1;
+		}
+	}
+	socket.on('find',function(data){id++;turn=1-turn;});
+	socket.on('leave',function(data){
+		window.clearInterval(inter);
+		hb.clearRect(0, 0, canvas.width, canvas.height);
+		document.getElementById("h3").style.visibility="hidden";
+		document.getElementById("button1").style.visibility="visible";
+	});
+	socket.on('turn',function(data){
+		turn=1-turn
+		if(turn)
+			document.getElementById("h3").style.visibility="visible";
+		else
+			document.getElementById("h3").style.visibility="hidden";
+	;});
+	socket.on('cap',function(data){cap=data;});
+	socket.on('sign',function(data){
+		sign=data;
+		if(id==2){
+			sign[0]=9-sign[0];
+			sign[1]=8-sign[1];
+		}
+	});
+	socket.on('map',function(data){
+		if(id==1) map=data;
+		else{
+			for(var i=0;i<10;i++){
+				map[i]=[];
+				for(var j=0;j<9;j++){
+					map[i][j]=data[9-i][8-j];
+				}
+			}		
+		}
+	});
+	socket.on('start',function(data){
+		if(id==1) map=data;
+		else{
+			for(var i=0;i<10;i++){
+				map[i]=[];
+				for(var j=0;j<9;j++){
+					map[i][j]=data[9-i][8-j];
+				}
+			}		
+		}
+		inter=setInterval(draw, 60);
+		if(turn)
+			document.getElementById("h3").style.visibility="visible";
+		else
+			document.getElementById("h3").style.visibility="hidden";
+	});
+	
+	socket.on('over',function(data){
+		window.clearInterval(inter);
+		over=1;
+		document.getElementById("h3").style.visibility="hidden";
+		draw();
+		document.getElementById("button1").style.visibility="visible";
+	});
+	
+</script>
+</body>
+</html>
